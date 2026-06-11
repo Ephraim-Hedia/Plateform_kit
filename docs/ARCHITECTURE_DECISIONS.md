@@ -831,3 +831,115 @@ Implementation:
 Reason:
 Satisfies the Logging requirements (ADR-014) with structured, configurable
 logging and per-request logging out of the box.
+
+---
+
+# ADR-041
+
+Decision:
+Define the permission catalog as Domain constants, and seed the catalog plus
+a baseline Administrator role via EF Core HasData.
+
+Status:
+Approved
+
+Implementation:
+
+* Platform.Domain.Constants.Permissions: nested static classes (Roles,
+  PermissionCatalog, ...) holding permission code strings (e.g.
+  Roles.View, Roles.Manage, PermissionCatalog.View), plus an All list.
+* Platform.Infrastructure.Persistence.Seed.AuthorizationSeedData: HasData
+  for the Administrator ApplicationRole, the Permission rows (one per
+  Permissions.* constant), and the RolePermission rows granting all
+  catalog permissions to Administrator.
+
+Reason:
+Permission codes referenced by [HasPermission("...")] (ADR-030) and by seed
+data must stay in sync; defining them once as Domain constants gives
+compile-time checking for both. HasData ensures every migrated database
+starts with a usable Administrator role that can manage roles and
+permissions, without a separate manual seeding step.
+
+---
+
+# ADR-042
+
+Decision:
+RolePermission has its own surrogate Guid Id rather than a composite key of
+(RoleId, PermissionId).
+
+Status:
+Approved
+
+Implementation:
+
+* RolePermission : Entity<Guid>, created via RolePermission.Create(roleId,
+  permissionId).
+* RolePermissionConfiguration: HasKey(Id), plus a unique index on
+  (RoleId, PermissionId) to enforce one mapping per role/permission pair.
+
+Reason:
+Keeps RolePermission consistent with the Entity<Guid> foundation (every
+entity has a single Guid identity) and simplifies HasData seeding, while the
+unique index preserves the same uniqueness guarantee a composite key would
+provide.
+
+---
+
+# ADR-043
+
+Decision:
+Implement permission checks via a dynamic "Permission:" authorization policy
+provider, an AuthorizationHandler<PermissionRequirement>, and a
+[HasPermission("code")] attribute.
+
+Status:
+Approved
+
+Implementation:
+
+* PermissionAuthorizationPolicyProvider : DefaultAuthorizationPolicyProvider
+  recognizes policy names prefixed with "Permission:" and builds an
+  AuthorizationPolicy containing a PermissionRequirement(code) on demand,
+  falling back to the default provider for all other policy names.
+* PermissionAuthorizationHandler reads the caller's roles from the
+  ClaimTypes.Role claims (ADR-031), resolves the role -> permission set via
+  IPermissionService (IMemoryCache, ADR-034), and succeeds the requirement
+  if the permission is present.
+* HasPermissionAttribute(string permission) : AuthorizeAttribute is sugar
+  for [Authorize(Policy = "Permission:" + permission)].
+
+Reason:
+A static AuthorizationPolicy would need to be registered up front for every
+permission code, requiring central updates each time a new permission is
+added. Resolving policies dynamically lets controllers declare
+[HasPermission("Products.Create")] (ADR-030's preferred usage) for any
+permission code without further registration.
+
+---
+
+# ADR-044
+
+Decision:
+Introduce IPermissionCacheInvalidator as an Application abstraction,
+implemented in Infrastructure over IMemoryCache, and call it whenever a
+role's permission assignments change.
+
+Status:
+Approved
+
+Implementation:
+
+* Platform.Application.Abstractions.IPermissionCacheInvalidator:
+  InvalidateRole(string roleName).
+* Platform.Infrastructure.Authorization.PermissionCacheInvalidator removes
+  the cached permission set for that role name (same cache/key scheme used
+  by PermissionService).
+* AssignPermissionsCommandHandler calls InvalidateRole(role.Name) after
+  persisting the new RolePermission set for a role.
+
+Reason:
+Implements the mandatory cache invalidation rule from ADR-032/034 ("cache
+must be invalidated whenever a role-permission assignment changes") without
+giving the Application layer a direct dependency on IMemoryCache, which
+remains an Infrastructure concern.

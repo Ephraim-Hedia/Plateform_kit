@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -8,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using Platform.Application.Abstractions;
 using Platform.Application.Authentication;
 using Platform.Infrastructure.Authentication;
+using Platform.Infrastructure.Authorization;
 using Platform.Infrastructure.Identity;
 using Platform.Infrastructure.Persistence;
 using Platform.Infrastructure.Persistence.Interceptors;
@@ -70,6 +72,14 @@ public static class DependencyInjection
             });
 
         services.AddAuthorization();
+        services.AddSingleton<IAuthorizationPolicyProvider, PermissionAuthorizationPolicyProvider>();
+        services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+
+        services.AddMemoryCache();
+        services.AddScoped<IPermissionService, PermissionService>();
+        services.AddSingleton<IPermissionCacheInvalidator, PermissionCacheInvalidator>();
+
+        services.AddScoped<IRoleService, RoleService>();
 
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IIdentityService, IdentityService>();

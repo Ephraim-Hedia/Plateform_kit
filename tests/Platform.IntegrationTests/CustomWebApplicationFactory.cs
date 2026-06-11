@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Platform.Infrastructure.Persistence;
 using Platform.Infrastructure.Persistence.Interceptors;
 
@@ -28,5 +29,15 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
                     sp.GetRequiredService<SoftDeleteInterceptor>());
             });
         });
+    }
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        var host = base.CreateHost(builder);
+
+        using var scope = host.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.EnsureCreated();
+
+        return host;
     }
 }
