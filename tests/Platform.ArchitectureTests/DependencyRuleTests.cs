@@ -54,4 +54,15 @@ public class DependencyRuleTests
 
         result.IsSuccessful.Should().BeTrue();
     }
+
+    [Fact]
+    public void Infrastructure_Should_Not_DependOn_Api()
+    {
+        var result = Types.InAssembly(InfrastructureAssembly)
+            .Should()
+            .NotHaveDependencyOn("Platform.API")
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue();
+    }
 }
