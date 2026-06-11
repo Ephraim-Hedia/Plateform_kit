@@ -732,3 +732,102 @@ Reason:
 The platform is intended for practical reuse by a small team or individual developer.
 
 Avoid over-engineering and speculative abstractions.
+
+---
+
+# ADR-037
+
+Decision:
+Use MediatR Pipeline Behaviors for cross-cutting concerns.
+
+Status:
+Approved
+
+Implementation:
+
+* LoggingBehavior<TRequest, TResponse>
+* ValidationBehavior<TRequest, TResponse>
+
+Registered as open generic behaviors in Application's AddApplicationServices,
+in the order Logging -> Validation -> Handler.
+
+Reason:
+Keeps cross-cutting concerns (logging, validation) out of individual command
+and query handlers while remaining fully within the Application layer.
+
+---
+
+# ADR-038
+
+Decision:
+ValidationBehavior returns ValidationResult / ValidationResult<T> instead of throwing.
+
+Status:
+Approved
+
+Implementation:
+
+* IValidationResult (Domain)
+* ValidationResult : Result, IValidationResult
+* ValidationResult<TValue> : Result<TValue>, IValidationResult
+
+ValidationBehavior<TRequest, TResponse> requires TResponse : Result, runs all
+registered FluentValidation validators for the request, and on failure returns
+a ValidationResult (or ValidationResult<TValue>) carrying every Error produced
+by FluentValidation, without calling the handler.
+
+Reason:
+Keeps validation failures inside the Result pattern (ADR-021/022) - expected
+failures still do not throw - while still exposing the full set of per-field
+validation errors to the API layer, instead of being limited to a single Error.
+
+---
+
+# ADR-039
+
+Decision:
+Centralize Result -> HTTP mapping in ApiControllerBase, and unexpected
+exceptions in a global IExceptionHandler.
+
+Status:
+Approved
+
+Implementation:
+
+API/Common/ApiControllerBase:
+
+* HandleFailure(Result result) maps ErrorType to ProblemDetails / status codes.
+* IValidationResult results are mapped to ValidationProblemDetails (400) with
+  one entry per Error.
+
+API/Common/GlobalExceptionHandler (IExceptionHandler):
+
+* Catches unhandled exceptions, logs them, and returns a generic 500
+  ProblemDetails response.
+
+Reason:
+Keeps controllers thin (ADR-013) and ensures consistent ProblemDetails
+responses for both expected (Result) and unexpected (exception) failures.
+
+---
+
+# ADR-040
+
+Decision:
+Configure Serilog from appsettings via Serilog.Settings.Configuration, with
+Console and File sinks, plus Serilog request logging middleware.
+
+Status:
+Approved
+
+Implementation:
+
+* Program.cs: builder.Host.UseSerilog((context, configuration) =>
+  configuration.ReadFrom.Configuration(context.Configuration))
+* app.UseSerilogRequestLogging()
+* appsettings.json / appsettings.Development.json: Serilog section
+  (MinimumLevel, WriteTo: Console + File, Enrich: FromLogContext)
+
+Reason:
+Satisfies the Logging requirements (ADR-014) with structured, configurable
+logging and per-request logging out of the box.

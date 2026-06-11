@@ -65,4 +65,15 @@ public class DependencyRuleTests
 
         result.IsSuccessful.Should().BeTrue();
     }
+
+    [Fact]
+    public void Domain_Should_Not_DependOn_AspNetIdentity()
+    {
+        var result = Types.InAssembly(DomainAssembly)
+            .Should()
+            .NotHaveDependencyOn("Microsoft.AspNetCore.Identity")
+            .GetResult();
+
+        result.IsSuccessful.Should().BeTrue();
+    }
 }
