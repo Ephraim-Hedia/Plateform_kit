@@ -943,3 +943,146 @@ Implements the mandatory cache invalidation rule from ADR-032/034 ("cache
 must be invalidated whenever a role-permission assignment changes") without
 giving the Application layer a direct dependency on IMemoryCache, which
 remains an Infrastructure concern.
+
+---
+
+# ADR-045
+
+Decision:
+Expose an interactive OpenAPI UI in Development using Scalar.AspNetCore, on
+top of ASP.NET Core's built-in OpenAPI document generation.
+
+Status:
+Approved
+
+Implementation:
+
+* Platform.API.csproj: Scalar.AspNetCore.
+* Program.cs: builder.Services.AddOpenApi(); in
+  app.Environment.IsDevelopment(), app.MapOpenApi() followed by
+  app.MapScalarApiReference().
+
+Reason:
+Satisfies the "Use: Scalar" API rule with a lightweight reference UI driven
+by the generated OpenAPI document, with no separate document-generation
+package to maintain. Restricting it to Development avoids exposing API
+documentation in other environments.
+
+---
+
+# ADR-046
+
+Decision:
+Split health checks into a liveness endpoint (/health/live) that runs no
+checks, and a readiness endpoint (/health/ready) that runs checks tagged
+"ready", including database connectivity.
+
+Status:
+Approved
+
+Implementation:
+
+* Platform.Infrastructure.csproj:
+  Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore.
+* Platform.Infrastructure.DependencyInjection.AddInfrastructureServices:
+  services.AddHealthChecks()
+      .AddDbContextCheck<ApplicationDbContext>("database", tags: ["ready"]).
+* Program.cs:
+  app.MapHealthChecks("/health/live", new HealthCheckOptions
+  { Predicate = _ => false });
+  app.MapHealthChecks("/health/ready", new HealthCheckOptions
+  { Predicate = check => check.Tags.Contains("ready") });
+
+Reason:
+A liveness probe should be cheap and independent of downstream dependencies,
+so a temporarily unreachable database does not cause an orchestrator to
+restart an otherwise-healthy process. A readiness probe should reflect
+whether the service can actually serve traffic, so it includes the database
+check. The DB check is registered in Infrastructure alongside
+ApplicationDbContext, keeping each layer responsible for its own service
+registration (Dependency Injection rules).
+
+---
+
+# ADR-047
+
+Decision:
+Version the API using URL segments (/api/v1/...) via Asp.Versioning.Mvc and
+Asp.Versioning.Mvc.ApiExplorer, with [ApiVersion("1.0")] and
+[Route("api/v{version:apiVersion}/...")] on every controller.
+
+Status:
+Approved
+
+Implementation:
+
+* Platform.API.csproj: Asp.Versioning.Mvc 8.1.0,
+  Asp.Versioning.Mvc.ApiExplorer 8.1.0 (the default 10.0.0 targets net10.0
+  only and is incompatible with net9.0).
+* Platform.API.DependencyInjection.AddApiServices:
+  AddApiVersioning(options => { DefaultApiVersion = new ApiVersion(1, 0);
+  AssumeDefaultVersionWhenUnspecified = true; ReportApiVersions = true;
+  ApiVersionReader = new UrlSegmentApiVersionReader(); })
+      .AddMvc()
+      .AddApiExplorer(options => { GroupNameFormat = "'v'VVV";
+      SubstituteApiVersionInUrl = true; }).
+* AuthController, PermissionsController, RolesController:
+  [ApiVersion("1.0")] + [Route("api/v{version:apiVersion}/...")], giving
+  routes /api/v1/auth/..., /api/v1/permissions, /api/v1/roles/....
+
+Reason:
+URL-segment versioning makes the API version explicit and discoverable in
+the route itself, which is the most common convention for REST APIs that
+need to support breaking changes across major versions side by side. Because
+the version segment is part of every route template, unversioned routes
+(/api/auth/..., etc.) return 404, so every future endpoint is versioned from
+the start.
+
+---
+
+# ADR-048
+
+Decision:
+Apply ASP.NET Core's built-in rate limiting middleware with two tiers: a
+global IP-partitioned fixed-window policy applied to all endpoints, and
+stricter named policies (login, register, refresh-token) applied to the
+corresponding AuthController actions. Limits are bound from a RateLimiting
+section in appsettings via IOptionsMonitor<RateLimitingOptions> and read per
+request.
+
+Status:
+Approved
+
+Implementation:
+
+* Platform.API.RateLimiting.RateLimitingOptions / RateLimitPolicyOptions:
+  Global, Login, Register, RefreshToken sections, each with PermitLimit and
+  WindowSeconds; defaults (100/60, 5/60, 3/60, 10/60) match appsettings.json
+  and apply if a section is absent.
+* Platform.API.RateLimiting.RateLimitingPolicies: policy name constants
+  (login, register, refresh-token).
+* Platform.API.RateLimiting.RateLimitingServiceCollectionExtensions
+  .AddRateLimitingPolicies:
+  services.Configure<RateLimitingOptions>(configuration.GetSection(
+      RateLimitingOptions.SectionName));
+  AddRateLimiter with GlobalLimiter plus three named policies, all built via
+  RateLimitPartition.GetFixedWindowLimiter partitioned by
+  httpContext.Connection.RemoteIpAddress, with options resolved per request
+  through IOptionsMonitor<RateLimitingOptions>.CurrentValue.
+* AuthController: [EnableRateLimiting(RateLimitingPolicies.Register/Login/
+  RefreshToken)] on Register/Login/RefreshToken actions.
+* OnRejected returns 429 with a ProblemDetails body
+  (application/problem+json) and a Retry-After header when available.
+* Program.cs: app.UseRateLimiter() before authentication/authorization.
+
+Reason:
+A global baseline limit protects every endpoint by default, while
+authentication endpoints - the most attractive targets for brute-force,
+credential-stuffing, and account-enumeration attacks - get independently
+configurable, stricter limits. IP-based partitioning is a reasonable default
+without requiring an authenticated identity. Reading options through
+IOptionsMonitor (rather than capturing a snapshot once at startup) keeps the
+limiter responsive to configuration added after the initial AddApiServices
+call - for example, test hosts overriding RateLimiting values via
+ConfigureAppConfiguration - and matches the requirement that these values be
+overridable per environment.

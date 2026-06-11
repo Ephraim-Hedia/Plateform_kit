@@ -37,6 +37,9 @@ public static class DependencyInjection
 
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
 
+        services.AddHealthChecks()
+            .AddDbContextCheck<ApplicationDbContext>("database", tags: ["ready"]);
+
         services.AddIdentityCore<ApplicationUser>(options =>
             {
                 options.User.RequireUniqueEmail = true;

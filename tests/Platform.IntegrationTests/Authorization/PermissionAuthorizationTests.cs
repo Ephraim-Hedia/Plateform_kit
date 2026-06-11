@@ -29,7 +29,7 @@ public class PermissionAuthorizationTests : IClassFixture<CustomWebApplicationFa
     [Fact]
     public async Task GetPermissions_Should_ReturnUnauthorized_WithoutToken()
     {
-        var response = await _client.GetAsync("/api/permissions");
+        var response = await _client.GetAsync("/api/v1/permissions");
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -39,7 +39,7 @@ public class PermissionAuthorizationTests : IClassFixture<CustomWebApplicationFa
     {
         var token = await RegisterAndLoginAsync($"{Guid.NewGuid()}@example.com");
 
-        var response = await SendAsync(HttpMethod.Get, "/api/permissions", token);
+        var response = await SendAsync(HttpMethod.Get, "/api/v1/permissions", token);
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -52,7 +52,7 @@ public class PermissionAuthorizationTests : IClassFixture<CustomWebApplicationFa
         await AddUserToRoleAsync(email, "Administrator");
         var token = await LoginAsync(email);
 
-        var response = await SendAsync(HttpMethod.Get, "/api/permissions", token);
+        var response = await SendAsync(HttpMethod.Get, "/api/v1/permissions", token);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -70,7 +70,7 @@ public class PermissionAuthorizationTests : IClassFixture<CustomWebApplicationFa
         await AddUserToRoleAsync(email, "Administrator");
         var token = await LoginAsync(email);
 
-        var response = await SendAsync(HttpMethod.Get, "/api/roles", token);
+        var response = await SendAsync(HttpMethod.Get, "/api/v1/roles", token);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -93,17 +93,17 @@ public class PermissionAuthorizationTests : IClassFixture<CustomWebApplicationFa
         await AddUserToRoleAsync(testerEmail, await GetRoleNameAsync(testerRoleId));
         var testerToken = await LoginAsync(testerEmail);
 
-        var initialResponse = await SendAsync(HttpMethod.Get, "/api/permissions", testerToken);
+        var initialResponse = await SendAsync(HttpMethod.Get, "/api/v1/permissions", testerToken);
         initialResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
         var assignResponse = await SendAsync(
             HttpMethod.Put,
-            $"/api/roles/{testerRoleId}/permissions",
+            $"/api/v1/roles/{testerRoleId}/permissions",
             adminToken,
             new { PermissionCodes = new[] { Permissions.PermissionCatalog.View } });
         assignResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        var followUpResponse = await SendAsync(HttpMethod.Get, "/api/permissions", testerToken);
+        var followUpResponse = await SendAsync(HttpMethod.Get, "/api/v1/permissions", testerToken);
         followUpResponse.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -117,7 +117,7 @@ public class PermissionAuthorizationTests : IClassFixture<CustomWebApplicationFa
 
         var response = await SendAsync(
             HttpMethod.Put,
-            $"/api/roles/{Guid.NewGuid()}/permissions",
+            $"/api/v1/roles/{Guid.NewGuid()}/permissions",
             token,
             new { PermissionCodes = new[] { Permissions.PermissionCatalog.View } });
 
@@ -136,7 +136,7 @@ public class PermissionAuthorizationTests : IClassFixture<CustomWebApplicationFa
 
         var response = await SendAsync(
             HttpMethod.Put,
-            $"/api/roles/{roleId}/permissions",
+            $"/api/v1/roles/{roleId}/permissions",
             token,
             new { PermissionCodes = new[] { "Unknown.Permission" } });
 
@@ -150,7 +150,7 @@ public class PermissionAuthorizationTests : IClassFixture<CustomWebApplicationFa
 
         var response = await SendAsync(
             HttpMethod.Put,
-            $"/api/roles/{Guid.NewGuid()}/permissions",
+            $"/api/v1/roles/{Guid.NewGuid()}/permissions",
             token,
             new { PermissionCodes = Array.Empty<string>() });
 
@@ -172,12 +172,12 @@ public class PermissionAuthorizationTests : IClassFixture<CustomWebApplicationFa
 
     private async Task RegisterAsync(string email, string password = "Password123!")
     {
-        await _client.PostAsJsonAsync("/api/auth/register", new { Email = email, Password = password });
+        await _client.PostAsJsonAsync("/api/v1/auth/register", new { Email = email, Password = password });
     }
 
     private async Task<string> LoginAsync(string email, string password = "Password123!")
     {
-        var response = await _client.PostAsJsonAsync("/api/auth/login", new { Email = email, Password = password });
+        var response = await _client.PostAsJsonAsync("/api/v1/auth/login", new { Email = email, Password = password });
         var tokens = await response.Content.ReadFromJsonAsync<AuthTokensResponse>(JsonOptions);
 
         return tokens!.AccessToken;

@@ -1,3 +1,4 @@
+using Asp.Versioning;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Platform.API.Common;
@@ -7,7 +8,8 @@ using PermissionConstants = Platform.Domain.Constants.Permissions;
 
 namespace Platform.API.Permissions;
 
-[Route("api/permissions")]
+[ApiVersion("1.0")]
+[Route("api/v{version:apiVersion}/permissions")]
 public sealed class PermissionsController(ISender sender) : ApiControllerBase
 {
     [HasPermission(PermissionConstants.PermissionCatalog.View)]
